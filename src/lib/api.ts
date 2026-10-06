@@ -7,5 +7,6 @@ export async function guard(request: Request) {
 }
 export function errorResponse(error: unknown) {
   console.error("Admin request failed:", error);
-  return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  return NextResponse.json({ error: `Server Error: ${errorMessage}` }, { status: 500 });
 }

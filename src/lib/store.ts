@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Brochure, Database } from "./types";
-export const dataDirectory = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), "data"));
+export const dataDirectory = path.resolve(process.env.DATA_DIR || (process.env.VERCEL ? "/tmp" : path.join(process.cwd(), "data")));
 export const uploadsDirectory = path.join(dataDirectory, "uploads");
 const databasePath = path.join(dataDirectory, "database.json");
 const emptyDatabase: Database = { brochures: [], settings: { instagram: "", facebook: "", whatsapp: "", phone: "", address: "", hours: "" }, carouselImages: [] };
