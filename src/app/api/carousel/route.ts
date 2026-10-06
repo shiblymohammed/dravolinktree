@@ -70,23 +70,24 @@ export async function POST(request: NextRequest) {
     }
 
     const filename = `${randomUUID()}.${ext}`;
-    const carouselDir = path.join(process.cwd(), "public", "images", "carousel");
-    await mkdir(carouselDir, { recursive: true });
-    const filePath = path.join(carouselDir, filename);
-    await writeFile(filePath, buffer);
+    
+    // Save to R2
+    const { createR2Storage, readR2Config } = await import("@/lib/r2");
+    const r2 = createR2Storage(readR2Config());
+    const contentType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "png" ? "image/png" : "image/webp";
+    await r2.put(`carousel/${filename}`, buffer, contentType, "inline");
 
-    const carouselImage = await updateDatabase(db => {
-      const maxOrder = Math.max(0, ...(db.carouselImages || []).map(img => img.order));
-      const newImage: CarouselImage = {
-        id: randomUUID(),
-        filename,
-        alt,
-        order: maxOrder + 1,
-        createdAt: new Date().toISOString(),
-      };
-      db.carouselImages = [...(db.carouselImages || []), newImage];
-      return newImage;
-    });
+    const db = await readDatabase();
+    const maxOrder = Math.max(0, ...(db.carouselImages || []).map(img => img.order));
+    const carouselImage: CarouselImage = {
+      id: randomUUID(),
+      filename,
+      alt,
+      order: maxOrder + 1,
+      createdAt: new Date().toISOString(),
+    };
+    
+    await import("@/lib/store").then(m => m.insertCarouselImage(carouselImage));
 
     return NextResponse.json({ carouselImage }, { status: 201 });
   } catch (error) {

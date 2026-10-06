@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { guard, errorResponse } from "@/lib/api";
-import { updateDatabase } from "@/lib/store";
+import { insertBrochure } from "@/lib/store";
 import { activeStorage, removePdf, savePdf } from "@/lib/pdf-storage";
 import { StorageConfigurationError } from "@/lib/r2";
 import { brochureFields, validatePdf, MAX_PDF_SIZE } from "@/lib/validation";
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   try {
     await savePdf(filename, buffer, storage);
     uploaded = true;
-    await updateDatabase(database => { database.brochures.push(brochure); });
+    await insertBrochure(brochure);
     return NextResponse.json({ brochure }, { status: 201 });
   } catch (error) {
     if (uploaded) await removePdf(filename, storage).catch(cleanupError => console.error("Could not clean up failed brochure upload:", cleanupError));

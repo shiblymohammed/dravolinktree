@@ -1,35 +1,77 @@
 import "server-only";
-import { mkdir, readFile, writeFile, rename, unlink } from "node:fs/promises";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
-import type { Brochure, Database } from "./types";
-export const dataDirectory = path.resolve(process.env.DATA_DIR || (process.env.VERCEL ? "/tmp" : path.join(process.cwd(), "data")));
-export const uploadsDirectory = path.join(dataDirectory, "uploads");
-const databasePath = path.join(dataDirectory, "database.json");
-const emptyDatabase: Database = { brochures: [], settings: { instagram: "", facebook: "", whatsapp: "", phone: "", address: "", hours: "" }, carouselImages: [] };
-const globalState = globalThis as typeof globalThis & { dravoWriteQueue?: Promise<unknown> };
+import { sql } from "@vercel/postgres";
+import type { Brochure, Database, Settings, CarouselImage } from "./types";
+
 export async function readDatabase(): Promise<Database> {
-  try { return JSON.parse(await readFile(databasePath, "utf8")) as Database; }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return structuredClone(emptyDatabase); throw error; }
+  const [brochuresData, carouselData, settingsData] = await Promise.all([
+    sql`SELECT * FROM brochures ORDER BY "createdAt" DESC;`,
+    sql`SELECT * FROM carousel_images ORDER BY "order" ASC;`,
+    sql`SELECT * FROM settings WHERE id = 1;`
+  ]);
+
+  return {
+    brochures: brochuresData.rows as Brochure[],
+    carouselImages: carouselData.rows as CarouselImage[],
+    settings: (settingsData.rows[0] as Settings) || { instagram: "", facebook: "", whatsapp: "", phone: "", address: "", hours: "" }
+  };
 }
-export async function updateDatabase<T>(mutate: (database: Database) => T | Promise<T>): Promise<T> {
-  const task = (globalState.dravoWriteQueue || Promise.resolve()).then(async () => {
-    await mkdir(uploadsDirectory, { recursive: true });
-    const database = await readDatabase();
-    const result = await mutate(database);
-    const temporary = `${databasePath}.${randomUUID()}.tmp`;
-    try { await writeFile(temporary, JSON.stringify(database, null, 2), { mode: 0o600 }); await rename(temporary, databasePath); }
-    catch (error) { await unlink(temporary).catch(() => {}); throw error; }
-    return result;
-  });
-  globalState.dravoWriteQueue = task.catch(() => {});
-  return task;
+
+export async function saveSettings(settings: Settings) {
+  await sql`
+    UPDATE settings SET 
+      instagram = ${settings.instagram},
+      facebook = ${settings.facebook},
+      whatsapp = ${settings.whatsapp},
+      phone = ${settings.phone},
+      address = ${settings.address},
+      hours = ${settings.hours}
+    WHERE id = 1;
+  `;
 }
+
+export async function insertBrochure(b: Brochure) {
+  await sql`
+    INSERT INTO brochures (id, title, category, description, published, filename, storage, "originalName", size, "createdAt")
+    VALUES (${b.id}, ${b.title}, ${b.category}, ${b.description}, ${b.published}, ${b.filename}, ${b.storage}, ${b.originalName}, ${b.size}, ${b.createdAt});
+  `;
+}
+
+export async function updateBrochure(b: Brochure) {
+  await sql`
+    UPDATE brochures SET 
+      title = ${b.title}, category = ${b.category}, description = ${b.description}, published = ${b.published}
+    WHERE id = ${b.id};
+  `;
+}
+
+export async function removeBrochure(id: string) {
+  await sql`DELETE FROM brochures WHERE id = ${id};`;
+}
+
+export async function insertCarouselImage(img: CarouselImage) {
+  await sql`
+    INSERT INTO carousel_images (id, alt, filename, "order", "createdAt")
+    VALUES (${img.id}, ${img.alt}, ${img.filename}, ${img.order}, ${img.createdAt});
+  `;
+}
+
+export async function updateCarouselImageOrder(id: string, order: number) {
+  await sql`UPDATE carousel_images SET "order" = ${order} WHERE id = ${id};`;
+}
+
+export async function removeCarouselImage(id: string) {
+  await sql`DELETE FROM carousel_images WHERE id = ${id};`;
+}
+
 export async function listBrochures(publishedOnly = true): Promise<Brochure[]> {
-  const { brochures } = await readDatabase();
-  return brochures.filter(item => !publishedOnly || item.published).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const query = publishedOnly 
+    ? sql`SELECT * FROM brochures WHERE published = true ORDER BY "createdAt" DESC;`
+    : sql`SELECT * FROM brochures ORDER BY "createdAt" DESC;`;
+  const result = await query;
+  return result.rows as Brochure[];
 }
-export async function listCarouselImages() {
-  const { carouselImages } = await readDatabase();
-  return (carouselImages || []).slice().sort((a, b) => a.order - b.order);
+
+export async function listCarouselImages(): Promise<CarouselImage[]> {
+  const result = await sql`SELECT * FROM carousel_images ORDER BY "order" ASC;`;
+  return result.rows as CarouselImage[];
 }

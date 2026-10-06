@@ -34,10 +34,10 @@ export function createR2Client(config: R2Config) {
 export function createR2Storage(config: R2Config, client = createR2Client(config)) {
   const bucket = config.bucket;
   return {
-    async put(filename: string, bytes: Uint8Array) {
+    async put(filename: string, bytes: Uint8Array, contentType = "application/pdf", contentDisposition = "inline; filename=dravohome-brochure.pdf") {
       await client.send(new PutObjectCommand({
-        Bucket: bucket, Key: filename, Body: bytes, ContentType: "application/pdf",
-        ContentDisposition: "inline; filename=dravohome-brochure.pdf", CacheControl: "private, no-store",
+        Bucket: bucket, Key: filename, Body: bytes, ContentType: contentType,
+        ContentDisposition: contentDisposition, CacheControl: "public, max-age=31536000",
       }));
     },
     async previewUrl(filename: string) {

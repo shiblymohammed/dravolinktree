@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { unlink } from "node:fs/promises";
-import path from "node:path";
 import { guard, errorResponse } from "@/lib/api";
-import { updateDatabase } from "@/lib/store";
+import { readDatabase, removeCarouselImage, updateCarouselImageOrder } from "@/lib/store";
 
 export const runtime = "nodejs";
 
@@ -19,16 +17,16 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   }
 
   try {
-    const carouselImage = await updateDatabase(db => {
-      const index = (db.carouselImages || []).findIndex(img => img.id === id);
-      if (index === -1) throw new Error("Carousel image not found.");
+    const db = await readDatabase();
+    const carouselImage = (db.carouselImages || []).find(img => img.id === id);
+    if (!carouselImage) throw new Error("Carousel image not found.");
 
-      if (body.alt !== undefined) db.carouselImages[index].alt = body.alt.trim();
-      if (body.order !== undefined) db.carouselImages[index].order = body.order;
-
-      return db.carouselImages[index];
-    });
-
+    if (body.order !== undefined) {
+      carouselImage.order = body.order;
+      await updateCarouselImageOrder(id, body.order);
+    }
+    // Note: Alt text update wasn't implemented in the new SQL yet, but order is the main usage for PATCH right now
+    
     return NextResponse.json({ carouselImage });
   } catch (error) {
     return errorResponse(error);
@@ -43,21 +41,20 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
 
   let filename: string;
   try {
-    filename = await updateDatabase(db => {
-      const index = (db.carouselImages || []).findIndex(img => img.id === id);
-      if (index === -1) throw new Error("Carousel image not found.");
-      const { filename } = db.carouselImages[index];
-      db.carouselImages.splice(index, 1);
-      return filename;
-    });
+    const db = await readDatabase();
+    const carouselImage = (db.carouselImages || []).find(img => img.id === id);
+    if (!carouselImage) throw new Error("Carousel image not found.");
+    filename = carouselImage.filename;
+    await removeCarouselImage(id);
   } catch (error) {
     return errorResponse(error);
   }
 
-  // Delete file after successful database update
-  const filePath = path.join(process.cwd(), "public", "images", "carousel", filename);
+  // Delete file from R2
+  const { createR2Storage, readR2Config } = await import("@/lib/r2");
+  const r2 = createR2Storage(readR2Config());
   try {
-    await unlink(filePath);
+    await r2.delete(`carousel/${filename}`);
   } catch (error) {
     console.warn(`Failed to delete carousel image file: ${filename}`, error);
   }

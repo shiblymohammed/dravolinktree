@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guard, errorResponse } from "@/lib/api";
 import { isAuthenticated } from "@/lib/auth";
-import { readDatabase, updateDatabase } from "@/lib/store";
+import { readDatabase, updateBrochure, removeBrochure } from "@/lib/store";
 import { removePdf, servePdf } from "@/lib/pdf-storage";
 import { StorageConfigurationError } from "@/lib/r2";
 import { brochureFields } from "@/lib/validation";
@@ -28,12 +28,12 @@ export async function PATCH(request: Request, context: Context) {
   let fields;
   try { fields = brochureFields(await request.json()); } catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 400 }); }
   try {
-    const brochure = await updateDatabase(database => {
-      const item = database.brochures.find(item => item.id === id);
-      if (!item) return null;
-      Object.assign(item, fields); return item;
-    });
-    return brochure ? NextResponse.json({ brochure }) : NextResponse.json({ error: "Brochure not found." }, { status: 404 });
+    const db = await readDatabase();
+    const item = db.brochures.find(b => b.id === id);
+    if (!item) return NextResponse.json({ error: "Brochure not found." }, { status: 404 });
+    Object.assign(item, fields);
+    await updateBrochure(item);
+    return NextResponse.json({ brochure: item });
   } catch (error) { return errorResponse(error); }
 }
 export async function DELETE(request: Request, context: Context) {
@@ -43,7 +43,7 @@ export async function DELETE(request: Request, context: Context) {
     const brochure = (await readDatabase()).brochures.find(item => item.id === id);
     if (!brochure) return NextResponse.json({ error: "Brochure not found." }, { status: 404 });
     await removePdf(brochure.filename, brochure.storage || "local");
-    await updateDatabase(database => { database.brochures = database.brochures.filter(item => item.id !== id); });
+    await removeBrochure(id);
     return NextResponse.json({ success: true });
   } catch (error) {
     if (error instanceof StorageConfigurationError) return NextResponse.json({ error: error.message }, { status: 503 });
