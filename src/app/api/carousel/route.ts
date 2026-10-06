@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import imageSize from "image-size";
 import { guard, errorResponse } from "@/lib/api";
-import { readDatabase, updateDatabase } from "@/lib/store";
+import { readDatabase } from "@/lib/store";
 import type { CarouselImage } from "@/lib/types";
 
 export const runtime = "nodejs";
