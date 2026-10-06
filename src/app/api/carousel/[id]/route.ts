@@ -41,26 +41,26 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
 
   const { id } = await props.params;
 
+  let filename: string;
   try {
-    await updateDatabase(async db => {
+    filename = await updateDatabase(db => {
       const index = (db.carouselImages || []).findIndex(img => img.id === id);
       if (index === -1) throw new Error("Carousel image not found.");
-
       const { filename } = db.carouselImages[index];
-      const filePath = path.join(process.cwd(), "public", "images", "carousel", filename);
-      
-      try {
-        await unlink(filePath);
-      } catch (error) {
-        // File might not exist, continue anyway
-        console.warn(`Failed to delete carousel image file: ${filename}`, error);
-      }
-
       db.carouselImages.splice(index, 1);
+      return filename;
     });
-
-    return NextResponse.json({ success: true });
   } catch (error) {
     return errorResponse(error);
   }
+
+  // Delete file after successful database update
+  const filePath = path.join(process.cwd(), "public", "images", "carousel", filename);
+  try {
+    await unlink(filePath);
+  } catch (error) {
+    console.warn(`Failed to delete carousel image file: ${filename}`, error);
+  }
+
+  return NextResponse.json({ success: true });
 }

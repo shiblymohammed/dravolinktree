@@ -1,0 +1,46 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "issue": "Image upload accepts extensions without magic byte validation",
+      "description": "The POST endpoint checks file extensions (jpg/jpeg/png/webp) but doesn't verify the file's actual format by reading magic bytes. Add magic byte validation in the POST handler before writing to disk, checking for JPEG (FF D8 FF), PNG (89 50 4E 47), and WebP (52 49 46 46) signatures."
+    },
+    {
+      "severity": "HIGH",
+      "issue": "Carousel interval cleanup missing on images.length transition",
+      "description": "The useEffect cleanup only runs on unmount, not when images.length changes. If images go from [1 item] to [], the interval keeps running and calls setCurrentIndex on stale data. Change the dependency array from [images.length] to [images.length, images] or add a guard at the start of the interval callback."
+    },
+    {
+      "severity": "MEDIUM",
+      "issue": "No image dimension validation",
+      "description": "Extreme aspect ratios (very wide panoramas or very tall portraits) will break the hero layout since carousel slides use fill with no constraints. Add a dimension check after reading the buffer in POST /api/carousel, rejecting images narrower than 800px or with aspect ratios outside 1:3 to 3:1."
+    },
+    {
+      "severity": "MEDIUM",
+      "issue": "Concurrent order updates can create duplicate order values",
+      "description": "The moveCarouselImage function sends two sequential PATCH requests, each reading the database independently. If another admin reorders the same images concurrently, both could assign order=2 to different images. Implement a single PATCH endpoint that swaps two images atomically, or add optimistic locking with a version field."
+    },
+    {
+      "severity": "MEDIUM",
+      "issue": "No CSRF token on mutation endpoints",
+      "description": "The guard() function checks same-origin headers but doesn't validate a CSRF token. If session cookies lack SameSite=Strict, a malicious site could POST to /api/carousel from an authenticated user's browser. Verify that session cookies use SameSite=Strict (check auth implementation) or add CSRF token validation to guard()."
+    },
+    {
+      "severity": "LOW",
+      "issue": "DELETE cascade leaves orphaned files on database failure",
+      "description": "The DELETE handler calls unlink() before removing the database record. If the database write fails after the file is deleted, the record remains pointing to a missing file. Reverse the order: remove from database first, then delete the file."
+    },
+    {
+      "severity": "LOW",
+      "issue": "Missing keyboard navigation",
+      "description": "The plan specified ArrowLeft/Right keyboard navigation but the Carousel component doesn't include it. Add a keydown event listener that calls goToPrevious() and goToNext()."
+    },
+    {
+      "severity": "LOW",
+      "issue": "Router refresh overhead on reordering",
+      "description": "The moveCarouselImage function calls router.refresh() after each swap, triggering full server re-renders. Debounce the refresh to reduce overhead when moving items multiple positions."
+    }
+  ],
+  "reviewDoc": "c:\\Users\\shibi\\Documents\\dev\\dravolink\\.agents\\tasks\\code-review.md"
+}

@@ -36,6 +36,7 @@ export function AdminDashboard({ initialData }: { initialData: Database }) {
   const carouselDeleteDialog = useRef<HTMLDialogElement>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
   const carouselInput = useRef<HTMLInputElement>(null);
+  const refreshTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { if (modalOpen) editDialog.current?.showModal(); else editDialog.current?.close(); }, [modalOpen]);
   useEffect(() => { if (pendingDelete) deleteDialog.current?.showModal(); else deleteDialog.current?.close(); }, [pendingDelete]);
   useEffect(() => { if (pendingCarouselDelete) carouselDeleteDialog.current?.showModal(); else carouselDeleteDialog.current?.close(); }, [pendingCarouselDelete]);
@@ -126,7 +127,10 @@ export function AdminDashboard({ initialData }: { initialData: Database }) {
       updated[currentIndex] = { ...image, order: swapImage.order };
       updated[swapIndex] = { ...swapImage, order: image.order };
       setCarouselImages(updated.sort((a, b) => a.order - b.order));
-      router.refresh();
+      
+      // Debounce router.refresh() to avoid overhead when moving multiple items
+      if (refreshTimeout.current) clearTimeout(refreshTimeout.current);
+      refreshTimeout.current = setTimeout(() => router.refresh(), 1000);
     } catch (error) { setCarouselError((error as Error).message); } finally { setCarouselBusy(false); }
   }
   async function saveSettings(event: React.FormEvent<HTMLFormElement>) {

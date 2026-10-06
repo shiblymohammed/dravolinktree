@@ -7,14 +7,51 @@ import type { CarouselImage } from "@/lib/types";
 export function Carousel({ images }: { images: CarouselImage[] }) {
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  const goToPrevious = () => {
+    if (images.length === 0) return;
+    setCurrentIndex(prev => (prev === 0 ? images.length - 1 : prev - 1));
+  };
+
+  const goToNext = () => {
+    if (images.length === 0) return;
+    setCurrentIndex(prev => (prev + 1) % images.length);
+  };
+
+  const goToSlide = (index: number) => {
+    setCurrentIndex(index);
+  };
+
+  // Auto-advance interval
   useEffect(() => {
     if (images.length === 0) return;
 
     const interval = setInterval(() => {
+      if (images.length === 0) return; // Guard against mid-interval deletion
       setCurrentIndex(prev => (prev + 1) % images.length);
     }, 5000);
 
     return () => clearInterval(interval);
+  }, [images.length, images]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (images.length === 0) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") {
+        if (images.length > 0) {
+          setCurrentIndex(prev => (prev === 0 ? images.length - 1 : prev - 1));
+        }
+      }
+      if (e.key === "ArrowRight") {
+        if (images.length > 0) {
+          setCurrentIndex(prev => (prev + 1) % images.length);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [images.length]);
 
   if (images.length === 0) {
@@ -51,18 +88,6 @@ export function Carousel({ images }: { images: CarouselImage[] }) {
       </div>
     );
   }
-
-  const goToPrevious = () => {
-    setCurrentIndex(prev => (prev === 0 ? images.length - 1 : prev - 1));
-  };
-
-  const goToNext = () => {
-    setCurrentIndex(prev => (prev + 1) % images.length);
-  };
-
-  const goToSlide = (index: number) => {
-    setCurrentIndex(index);
-  };
 
   return (
     <div className="hero-photo">
