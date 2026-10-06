@@ -1,0 +1,97 @@
+import { test, expect } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+test("landing, brochures, login and admin are usable on desktop and mobile", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await mkdir("test-results/previews", { recursive: true });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /Make yourself/ })).toBeVisible();
+  await expect(page.locator(".hero-image")).toBeVisible();
+  await expect.poll(() => page.locator(".hero-image").evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
+  await page.screenshot({ path: "test-results/previews/home-desktop.png", fullPage: true });
+  await page.getByRole("button", { name: /Let’s talk on WhatsApp/ }).click();
+  await expect(page.locator(".contact-dialog")).toBeVisible();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.locator(".contact-dialog")).not.toBeVisible();
+  await page.getByRole("link", { name: "Explore our brochures" }).click();
+  await expect(page).toHaveURL(/\/brochures$/);
+  await expect(page.getByRole("heading", { name: /Your home/ })).toBeVisible();
+  await page.screenshot({ path: "test-results/previews/brochures-desktop.png", fullPage: true });
+  await page.goto("/admin");
+  await expect(page).toHaveURL(/\/admin\/login$/);
+  await page.screenshot({ path: "test-results/previews/login-desktop.png", fullPage: true });
+  await page.getByLabel("Username").fill(process.env.ADMIN_USERNAME!);
+  await page.getByLabel("Password", { exact: true }).fill(process.env.ADMIN_PASSWORD!);
+  await page.getByRole("button", { name: "Enter the studio" }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole("heading", { name: "Your brochure library." })).toBeVisible();
+  await page.screenshot({ path: "test-results/previews/admin-desktop.png", fullPage: true });
+  await page.getByRole("button", { name: "Upload brochure", exact: true }).click();
+  await expect(page.locator(".editor-dialog")).toBeVisible();
+  await page.getByLabel("Brochure title").fill("Browser test collection");
+  await page.getByRole("button", { name: "Upload brochure", exact: true }).last().click();
+  await expect(page.locator(".editor-dialog").getByRole("alert")).toContainText("Choose a PDF");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "Contact & links" }).click();
+  await expect(page.getByLabel("Instagram URL")).toBeVisible();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("status")).toContainText("contact details are now live");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "test-results/previews/admin-mobile.png", fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: /Make yourself/ })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/previews/home-mobile.png", fullPage: true });
+  await page.goto("/brochures");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/previews/brochures-mobile.png", fullPage: true });
+  expect(errors).toEqual([]);
+});
+
+test("admin can upload a draft, publish an edit, and delete the PDF through the interface", async ({ page }) => {
+  await page.goto("/admin/login");
+  await page.getByLabel("Username").fill(process.env.ADMIN_USERNAME!);
+  await page.getByLabel("Password", { exact: true }).fill(process.env.ADMIN_PASSWORD!);
+  await page.getByRole("button", { name: "Enter the studio" }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  let id: string | undefined;
+  try {
+    await page.getByRole("button", { name: "Upload brochure", exact: true }).click();
+    await page.locator(".editor-dialog input[type=file]").setInputFiles({ name: "interface-test.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF") });
+    await page.getByLabel("Brochure title").fill("Interface test draft");
+    await page.getByLabel("A few words about the collection").fill("Temporary brochure for interface verification.");
+    await page.getByLabel("Publish to your website").uncheck();
+    const upload = page.waitForResponse(response => response.url().endsWith("/api/brochures") && response.request().method() === "POST");
+    await page.locator(".editor-dialog").getByRole("button", { name: "Upload brochure", exact: true }).click();
+    id = (await (await upload).json()).brochure.id;
+    await expect(page.locator(".editor-dialog")).not.toBeVisible();
+    await expect(page.getByRole("row").filter({ hasText: "Interface test draft" })).toContainText("Draft");
+    const privateResponse = await page.request.get(`/api/brochures/${id}`);
+    expect(privateResponse.status()).toBe(200);
+    await page.getByRole("button", { name: "Edit Interface test draft", exact: true }).click();
+    await page.getByLabel("Brochure title").fill("Interface test published");
+    await page.getByRole("combobox", { name: "Collection", exact: true }).selectOption("Dining");
+    await page.getByLabel("Publish to your website").check();
+    await page.locator(".editor-dialog").getByRole("button", { name: "Save changes", exact: true }).click();
+    await expect(page.getByRole("row").filter({ hasText: "Interface test published" })).toContainText("Published");
+    await page.goto("/brochures");
+    await expect(page.getByRole("heading", { name: "Interface test published" })).toBeVisible();
+    await page.getByRole("button", { name: "Living", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Interface test published" })).not.toBeVisible();
+    await page.getByRole("button", { name: "Dining", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Interface test published" })).toBeVisible();
+    await page.getByRole("searchbox", { name: "Search brochures" }).fill("no matching title here");
+    await expect(page.getByRole("heading", { name: "Interface test published" })).not.toBeVisible();
+    await page.goto("/admin");
+    await page.getByRole("button", { name: "Delete Interface test published", exact: true }).click();
+    await page.locator(".delete-dialog").getByRole("button", { name: "Delete brochure", exact: true }).click();
+    await expect(page.getByRole("row").filter({ hasText: "Interface test published" })).toHaveCount(0);
+    id = undefined;
+  } finally {
+    if (id) {
+      test.setTimeout(test.info().timeout + 10_000);
+      await page.request.delete(`/api/brochures/${id}`, { headers: { Origin: process.env.APP_URL || "http://localhost:3001" }, timeout: 8000 }).catch(() => {});
+    }
+  }
+});

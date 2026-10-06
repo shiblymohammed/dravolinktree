@@ -1,0 +1,56 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+const base = process.env.APP_URL || "http://localhost:3001";
+const credentials = { username: process.env.ADMIN_USERNAME, password: process.env.ADMIN_PASSWORD };
+assert.ok(credentials.username && credentials.password, "Run with node --env-file=.env.local scripts/smoke-test.mjs");
+const json = { "Content-Type": "application/json", Origin: base };
+let response = await fetch(`${base}/`);
+assert.equal(response.status, 200, (await response.clone().text()).slice(0, 6000));
+assert.ok((await response.text()).includes("Make yourself"));
+response = await fetch(`${base}/admin`, { redirect: "manual" });
+assert.equal(response.status, 307);
+response = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { ...json, Origin: "https://evil.test" }, body: JSON.stringify(credentials) });
+assert.equal(response.status, 403);
+response = await fetch(`${base}/api/auth/login`, { method: "POST", headers: json, body: JSON.stringify({ ...credentials, password: "invalid" }) });
+assert.equal(response.status, 401);
+response = await fetch(`${base}/api/auth/login`, { method: "POST", headers: json, body: JSON.stringify(credentials) });
+assert.equal(response.status, 200);
+const cookie = response.headers.get("set-cookie").split(";")[0];
+assert.ok(response.headers.get("set-cookie").includes("HttpOnly"));
+const auth = { ...json, Cookie: cookie };
+response = await fetch(`${base}/admin`, { headers: { Cookie: cookie } });
+assert.equal(response.status, 200);
+response = await fetch(`${base}/api/brochures`, { method: "POST", headers: { Origin: base } });
+assert.equal(response.status, 401);
+function fixturePdf() {
+  let source = "%PDF-1.4\n";
+  const objects = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 300] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>", "<< /Length 51 >>\nstream\nBT /F1 18 Tf 30 200 Td (DravoHome test PDF) Tj ET\nendstream", "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"];
+  const positions = [0];
+  objects.forEach((object, index) => { positions.push(Buffer.byteLength(source)); source += `${index + 1} 0 obj\n${object}\nendobj\n`; });
+  const start = Buffer.byteLength(source);
+  source += `xref\n0 6\n0000000000 65535 f \n${positions.slice(1).map(position => `${String(position).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`;
+  return source;
+}
+const form = new FormData();
+form.set("title", "Smoke test collection"); form.set("description", "Temporary test brochure"); form.set("category", "Living"); form.set("published", "false");
+form.set("file", new File([fixturePdf()], "smoke-test.pdf", { type: "application/pdf" }));
+let id;
+try {
+  response = await fetch(`${base}/api/brochures`, { method: "POST", headers: { Origin: base, Cookie: cookie }, body: form });
+  assert.equal(response.status, 201, await response.clone().text());
+  id = (await response.json()).brochure.id;
+  response = await fetch(`${base}/api/brochures/${id}`); assert.equal(response.status, 404);
+  response = await fetch(`${base}/api/brochures/${id}`, { headers: { Cookie: cookie } }); assert.equal(response.status, 200); assert.equal(response.headers.get("content-type"), "application/pdf");
+  response = await fetch(`${base}/brochures`); assert.ok(!(await response.text()).includes("Smoke test collection"));
+  response = await fetch(`${base}/api/brochures/${id}`, { method: "PATCH", headers: { ...auth, Origin: "https://evil.test" }, body: JSON.stringify({ title: "Edited", category: "Living", published: true }) }); assert.equal(response.status, 403);
+  response = await fetch(`${base}/api/brochures/${id}`, { method: "PATCH", headers: auth, body: JSON.stringify({ title: "Smoke test published", description: "Test edit", category: "Dining", published: true }) }); assert.equal(response.status, 200);
+  response = await fetch(`${base}/api/brochures/${id}?download=1`); assert.equal(response.status, 200); assert.ok(response.headers.get("content-disposition").startsWith("attachment"));
+  response = await fetch(`${base}/brochures`); assert.ok((await response.text()).includes("Smoke test published"));
+  response = await fetch(`${base}/api/settings`, { method: "PUT", headers: auth, body: JSON.stringify({ instagram: "https://evil.test" }) }); assert.equal(response.status, 400);
+  const original = JSON.parse(await readFile("data/database.json", "utf8")).settings;
+  response = await fetch(`${base}/api/settings`, { method: "PUT", headers: auth, body: JSON.stringify(original) }); assert.equal(response.status, 200);
+  response = await fetch(`${base}/api/brochures/${id}`, { method: "DELETE", headers: auth }); assert.equal(response.status, 200);
+  response = await fetch(`${base}/api/brochures/${id}`); assert.equal(response.status, 404); id = undefined;
+  response = await fetch(`${base}/api/auth/logout`, { method: "POST", headers: auth }); assert.equal(response.status, 200); assert.ok(response.headers.get("set-cookie").includes("Max-Age=0"));
+  console.log("PASS: landing, login protection, valid/invalid login, CSRF checks, PDF upload, private drafts, preview, publish/edit, download, settings, deletion and logout.");
+} finally { if (id) await fetch(`${base}/api/brochures/${id}`, { method: "DELETE", headers: auth }); }
