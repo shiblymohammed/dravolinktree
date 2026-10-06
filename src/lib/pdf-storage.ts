@@ -2,7 +2,8 @@ import "server-only";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createR2Storage, readR2Config, StorageConfigurationError } from "./r2";
-import { uploadsDirectory } from "./store";
+import os from "node:os";
+const uploadsDirectory = process.env.VERCEL ? "/tmp" : path.join(process.cwd(), ".data");
 import type { Brochure, StorageKind } from "./types";
 
 export function activeStorage(): StorageKind {
