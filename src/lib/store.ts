@@ -18,14 +18,23 @@ export async function readDatabase(): Promise<Database> {
 
 export async function saveSettings(settings: Settings) {
   await sql`
-    UPDATE settings SET 
-      instagram = ${settings.instagram},
-      facebook = ${settings.facebook},
-      whatsapp = ${settings.whatsapp},
-      phone = ${settings.phone},
-      address = ${settings.address},
-      hours = ${settings.hours}
-    WHERE id = 1;
+    INSERT INTO settings (id, instagram, facebook, whatsapp, phone, address, hours)
+    VALUES (
+      1,
+      ${settings.instagram},
+      ${settings.facebook},
+      ${settings.whatsapp},
+      ${settings.phone},
+      ${settings.address},
+      ${settings.hours}
+    )
+    ON CONFLICT (id) DO UPDATE SET 
+      instagram = EXCLUDED.instagram,
+      facebook = EXCLUDED.facebook,
+      whatsapp = EXCLUDED.whatsapp,
+      phone = EXCLUDED.phone,
+      address = EXCLUDED.address,
+      hours = EXCLUDED.hours;
   `;
 }
 
