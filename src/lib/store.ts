@@ -6,7 +6,7 @@ import type { Brochure, Database } from "./types";
 export const dataDirectory = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), "data"));
 export const uploadsDirectory = path.join(dataDirectory, "uploads");
 const databasePath = path.join(dataDirectory, "database.json");
-const emptyDatabase: Database = { brochures: [], settings: { instagram: "", facebook: "", whatsapp: "", phone: "", address: "", hours: "" } };
+const emptyDatabase: Database = { brochures: [], settings: { instagram: "", facebook: "", whatsapp: "", phone: "", address: "", hours: "" }, carouselImages: [] };
 const globalState = globalThis as typeof globalThis & { dravoWriteQueue?: Promise<unknown> };
 export async function readDatabase(): Promise<Database> {
   try { return JSON.parse(await readFile(databasePath, "utf8")) as Database; }
@@ -28,4 +28,8 @@ export async function updateDatabase<T>(mutate: (database: Database) => T | Prom
 export async function listBrochures(publishedOnly = true): Promise<Brochure[]> {
   const { brochures } = await readDatabase();
   return brochures.filter(item => !publishedOnly || item.published).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+export async function listCarouselImages() {
+  const { carouselImages } = await readDatabase();
+  return (carouselImages || []).slice().sort((a, b) => a.order - b.order);
 }

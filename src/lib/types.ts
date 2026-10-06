@@ -14,5 +14,12 @@ export type Brochure = {
   published: boolean;
   createdAt: string;
 };
+export type CarouselImage = {
+  id: string;
+  filename: string;
+  alt: string;
+  order: number;
+  createdAt: string;
+};
 export type Settings = { instagram: string; facebook: string; whatsapp: string; phone: string; address: string; hours: string };
-export type Database = { brochures: Brochure[]; settings: Settings };
+export type Database = { brochures: Brochure[]; settings: Settings; carouselImages: CarouselImage[] };
